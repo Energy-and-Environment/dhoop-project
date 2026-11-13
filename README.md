@@ -4,31 +4,39 @@ Solar project delivery desk for residential, commercial and industrial installs 
 pipeline (lead to handover), team tasks, payment milestones, margin tracking, quick quote,
 and WhatsApp client updates in English and Roman Urdu.
 
-It is a single static page (`index.html`) with no build step and no server.
+The interface is a single static page (`index.html`). A Netlify Function stores the shared
+application state in MongoDB, while `localStorage` keeps an offline browser copy.
 
 ## Deploy
 
-**Netlify (easiest):** open https://app.netlify.com/drop and drag this whole folder onto the page.
-You get a live `https://<name>.netlify.app` link in seconds. `_headers` sets security headers.
+The production site is https://dhoop-project.netlify.app.
 
-**Vercel:** log in at vercel.com → Add New → Project → upload this folder (or `vercel deploy`
-from this folder if the Vercel CLI is installed). `vercel.json` sets security headers.
+Netlify deploys the static page and the function using `netlify.toml`. Connect this repository
+to the Netlify site and set the environment variables described below. `_headers` sets security
+headers for the browser app.
 
-**Cloudflare Pages:** Workers & Pages → Create → Pages → Upload assets → upload this folder.
+## MongoDB setup
 
-**Any web host / cPanel:** upload `index.html` to `public_html`.
+1. Create a MongoDB Atlas cluster and database user.
+2. In Atlas Network Access, allow connections from Netlify's functions. Atlas' serverless-safe
+   option is `0.0.0.0/0`; use a strong database password because this permits connections from
+   any IP address.
+3. In Netlify, open **Site configuration → Environment variables** and add:
+   - `MONGODB_URI`: the Atlas connection string
+   - `MONGODB_DB`: database name (optional; defaults to `dhoop`)
+   - `DHOOP_ACCESS_KEY`: a long random password shared only with authorized staff
+4. Trigger a new Netlify deploy.
+5. Open the site, click the database status at the top, and enter `DHOOP_ACCESS_KEY`.
 
-Custom domain (e.g. `desk.yourcompany.com`): add it in the host's Domains settings and create
-the CNAME record it shows at your domain registrar. HTTPS is issued automatically.
+The function writes one document (`_id: "primary"`) to the `app_state` collection and polls for
+updates every five seconds. The access key is checked by the server function; MongoDB credentials
+never reach the browser. The local copy remains available if the database is temporarily offline.
 
-## Data storage (read this)
+Use **Backup** regularly to download a JSON recovery file and **Restore** to replace the current
+shared data from a backup.
 
-On a normal web host the app saves data **in each user's browser only** (localStorage).
-Each staff member and each device has its own copy, and clearing browser data deletes it.
-
-- Use **Backup** (top bar) regularly to download a `.json` file, and **Restore** to load one.
-- For a shared, multi-user team desk with logins, the next step is a hosted database
-  (e.g. Supabase or Firebase) wired into `save()` / `initDb()` in `index.html`.
+For local development, copy `.env.example` to `.env`, fill in the values, run `npm install`, then
+run `npx netlify dev`.
 
 ## Quick quote engineering model
 

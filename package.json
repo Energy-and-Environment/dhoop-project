@@ -1,0 +1,13 @@
+{
+  "name": "dhoop-project-desk",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Solar project delivery desk with MongoDB persistence",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "mongodb": "^6.12.0"
+  }
+}
+
