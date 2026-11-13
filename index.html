@@ -365,17 +365,14 @@ function waHref(p,text){
 
 /* ---------- persistence ---------- */
 let dbRef=false, saveTimer=null, pollTimer=null, writing=false, dirty=false;
-const LS="dhoop-pms-v1", KEY="dhoop-db-key", API="/api/state";
-function loadLocal(){try{const r=localStorage.getItem(LS);if(r)return JSON.parse(r)}catch(e){}return null}
-function accessKey(){try{return localStorage.getItem(KEY)||""}catch(e){return ""}}
+const API="/api/state", SESSION_API="/api/session";
 function save(){
   S.rev=uid();
-  try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){}
   clearTimeout(saveTimer);saveTimer=setTimeout(flush,500);
   setSync();
 }
 async function api(method,body){
-  return fetch(API,{method,headers:{"content-type":"application/json","x-dhoop-key":accessKey()},body:body?JSON.stringify(body):undefined,cache:"no-store"});
+  return fetch(API,{method,headers:{"content-type":"application/json"},body:body?JSON.stringify(body):undefined,cache:"no-store",credentials:"same-origin"});
 }
 async function flush(){
   if(!dbRef)return;
@@ -383,7 +380,7 @@ async function flush(){
   writing=true;
   try{
     const r=await api("PUT",{state:clone(S)});
-    if(r.status===401){dbRef=false;try{localStorage.removeItem(KEY)}catch(e){}setSync(false,"locked")}
+    if(r.status===401){dbRef=false;setSync(false,"locked")}
     else if(!r.ok)throw new Error("http_"+r.status);
     else setSync(true);
   }catch(e){setSync(false,e&&e.message)}
@@ -393,7 +390,8 @@ async function flush(){
 function setSync(ok,code){
   const el=$("#sync");if(!el)return;
   if(code==="locked")el.textContent="Database locked — click to connect";
-  else if(!dbRef)el.textContent="Saved in this browser only";
+  else if(code==="error")el.textContent="Database unavailable — click to retry";
+  else if(!dbRef)el.textContent="Database locked — changes are not saved";
   else if(ok===false)el.textContent="Not synced — click to retry";
   else el.textContent=ok?"Synced with MongoDB":"Saving…";
 }
@@ -401,32 +399,36 @@ async function pullRemote(){
   if(!dbRef||writing)return;
   try{
     const r=await api("GET");
-    if(r.status===401){dbRef=false;clearInterval(pollTimer);try{localStorage.removeItem(KEY)}catch(e){}setSync(false,"locked");return}
+    if(r.status===401){dbRef=false;clearInterval(pollTimer);setSync(false,"locked");return}
     if(!r.ok)throw new Error("http_"+r.status);
     const payload=await r.json(),d=payload.state;
-    if(d&&d.rev!==S.rev){S=d;if(migrate(S))save();try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){}render()}
+    if(d&&d.rev!==S.rev){S=d;if(migrate(S))save();render()}
     setSync(true);
   }catch(e){setSync(false,e&&e.message)}
 }
 async function connectDb(ask){
-  if(ask||!accessKey()){
+  if(ask){
     const key=prompt("Enter the Dhoop database access key");
     if(!key){setSync();return false}
-    try{localStorage.setItem(KEY,key)}catch(e){}
+    try{
+      const login=await fetch(SESSION_API,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({accessKey:key}),cache:"no-store",credentials:"same-origin"});
+      if(!login.ok){setSync(false,login.status===401?"locked":"error");return false}
+    }catch(e){setSync(false,"error");return false}
   }
   try{
     const r=await api("GET");
-    if(r.status===401){try{localStorage.removeItem(KEY)}catch(e){}setSync(false,"locked");if(!ask)connectDb(true);return false}
+    if(r.status===401){setSync(false,"locked");return false}
     if(!r.ok)throw new Error("http_"+r.status);
     dbRef=true;
     const payload=await r.json(),d=payload.state;
-    if(d){if(d.rev!==S.rev){S=d;if(migrate(S))save();try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){}render()}}
+    if(d){if(d.rev!==S.rev){S=d;if(migrate(S))save();render()}}
     else await flush();
     clearInterval(pollTimer);pollTimer=setInterval(pullRemote,5000);setSync(true);return true;
   }catch(e){dbRef=false;setSync(false,e&&e.message);return false}
 }
 async function initDb(){
-  if(accessKey())await connectDb(false);else setSync(false,"locked");
+  try{localStorage.removeItem("dhoop-db-key");localStorage.removeItem("dhoop-pms-v1")}catch(e){}
+  await connectDb(false);
 }
 
 /* ---------- derived ---------- */
@@ -734,7 +736,7 @@ document.addEventListener("input",e=>{
 });
 
 /* ---------- boot ---------- */
-S=loadLocal()||sampleData();
+S=sampleData();
 if(migrate(S))save();
 render();
 initDb();

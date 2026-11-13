@@ -4,8 +4,8 @@ Solar project delivery desk for residential, commercial and industrial installs 
 pipeline (lead to handover), team tasks, payment milestones, margin tracking, quick quote,
 and WhatsApp client updates in English and Roman Urdu.
 
-The interface is a single static page (`index.html`). A Netlify Function stores the shared
-application state in MongoDB, while `localStorage` keeps an offline browser copy.
+The interface is a single static page (`index.html`). Netlify Functions authenticate users and
+store the shared application state in MongoDB.
 
 ## Deploy
 
@@ -24,13 +24,23 @@ headers for the browser app.
 3. In Netlify, open **Site configuration → Environment variables** and add:
    - `MONGODB_URI`: the Atlas connection string
    - `MONGODB_DB`: database name (optional; defaults to `dhoop`)
-   - `DHOOP_ACCESS_KEY`: a long random password shared only with authorized staff
+   - `DHOOP_ACCESS_KEY`: a random access password of at least 20 characters
+   - `DHOOP_SESSION_SECRET`: a different random signing secret of at least 32 characters
 4. Trigger a new Netlify deploy.
 5. Open the site, click the database status at the top, and enter `DHOOP_ACCESS_KEY`.
 
-The function writes one document (`_id: "primary"`) to the `app_state` collection and polls for
-updates every five seconds. The access key is checked by the server function; MongoDB credentials
-never reach the browser. The local copy remains available if the database is temporarily offline.
+The browser talks only to same-origin `/api/session` and `/api/state` reverse endpoints. MongoDB
+credentials and signing secrets exist only in Netlify environment variables and never reach the
+browser or repository. After the access password is verified, the server issues an eight-hour
+`HttpOnly`, `Secure`, `SameSite=Strict` signed session cookie; the password is not stored by the
+browser. State updates also require a matching same-origin request. The app polls for updates every
+five seconds. Protected project data is held in memory only during the open browser session; it is
+not retained in `localStorage`. Older browser caches created by previous releases are purged at
+startup.
+
+Never commit `.env` files or paste production secrets into source code, issues, deployment logs,
+or chat. If a real secret is ever committed, rotate it immediately; deleting the file in a later
+commit does not remove it from Git history.
 
 Use **Backup** regularly to download a JSON recovery file and **Restore** to replace the current
 shared data from a backup.
